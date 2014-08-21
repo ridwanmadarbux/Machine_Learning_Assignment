@@ -1,0 +1,171 @@
+---
+title: "Machine Learning Report"
+author: "Muhammad Ridwan Madarbux"
+date: "Thursday, August 21, 2014"
+output: html_document
+---
+
+INTRODUCTION
+
+This report deals with the implications of machine learning. Data was collected from six participants who were performing weight lifting using accelerometers placed on their belts, forearms, arms, and dumbbells. They were also allocated a variable called "classe" which quantified how well they were performing the exercise. This variable varied from alphabets between "A" and "E". The aim of this assignment is to build a machine learning algorithm which, given the inputs from the different accelerometers, can determine how well the exercise is being performed.
+
+DATA PREPROCESSING, TRAINING METHODS AND CROSS VALIDATION TO OBTAIN THE RESULTS
+
+
+```{r}
+library(caret) 
+```
+
+The caret library is loaded in order to enable machine learning to occur.
+
+```{r}
+setwd("C:/Users/ridwan/Downloads/")
+workingdata <- read.csv("pml-training.csv")
+final_testset <- read.csv("pml-testing.csv") 
+```
+
+The read.csv function is used to load the information contained in the provided files into data frames for them to be worked upon. The training data frame is stored in the variable "workingdata" and the testing data provided for the assignment are stored in the "final_testset" variable. 
+
+```{r}
+set.seed(3433)
+inTrain <- createDataPartition(workingdata$classe,p=0.30,list=FALSE)
+training <- workingdata[inTrain,]
+testing <- workingdata[-inTrain,]  
+```
+
+The set.seed() function is used here in order to allow reproducibility in the situation that this sequence of operations are to be repeated in the future. It will also be set every time before a training is set to happen. The workingdata is then split into the training set and the testing set. Although it is customary to have a larger training set as compared to the testing set, I am limited by the amount of RAM on my laptop and was therefore constrained to use a relatively limited training set. I set this variable to be 30% of the total workingdata. The remaining 70% were used as the testing set. To compensate, I will test this model with various training methods. 
+
+```{r}
+dim(training)
+summary(training) 
+```
+
+Using the dim() method, I found that there was 160 variables available for the training. Since this is a very large amount of variables, it would require a considerable amount of RAM and also, the time taken for the training would be very large. After using the summary() function, it was found that many of these columns were actually empty or contained irrelevant information or contained NA variables.
+
+```{r}
+na_test <- sapply(training, function(x) {sum(is.na(x))})
+table(na_test)
+bad_columns <- names(na_test[na_test==5772])
+training <- training[, !names(training) %in% bad_columns]
+```
+
+The function described above located all the columns containing only NA variables and removed them. Subsequently, we were able to remove 67 columns which effectively did not contain any useful information. The table(na_test) allowed me to set the 5772 variable in the following line. Hence, the 160 columns previously present was now reduced to only 93. 
+
+```{r}
+training <- training[,-c(1:7)] 
+```
+
+The first 7 columns now only contained information about the name of the person performing the actions and when they were performing them. These information will have no impact on how well the actions are actually being performed and therefore they were removed. 
+
+```{r}
+summary(training)
+training <- training[,-c(5:13,36:41,45:53,67:75)]
+dim(training) 
+```
+
+Now, there remains 86 columns to analyse and the summary() function was again used to investigate whether some columns could be removed. It was found that many columns were still blank. They were manually located and removed by the line above. The dim() function showed that only 53 columns were left for the training purpose. 
+
+```{r}
+set.seed(62433)
+modFit_lda <- train(training$classe~.,data=training,method="lda")
+pred_lda <- predict(modFit_lda,testing)
+confusionMatrix(pred_lda,testing$classe) 
+```
+
+The first method to be looked at is the lda method. Although it processes relatively quickly, it did not perform well when tested in the confusionMatrix function. It showed an accuracy of only 69.39%. Hence, this method was discarded. 
+
+```{r}
+set.seed(62433)
+modFit_rpart <- train(training$classe~.,data=training,method="rpart")
+pred_rpart <- predict(modFit_rpart,testing)
+confusionMatrix(pred_rpart,testing$classe) 
+```
+
+The second method to be looked at is the rpart method. This method as well was relatively quick to run but it showed an even worse accuracy of only 49.27%. Hence, this method was discarded as well. 
+
+```{r}
+set.seed(62433)
+modFit_rf <- train(training$classe~.,data=training,method="rf",prox=TRUE)
+pred_rf <- predict(modFit_rf,testing)
+confusionMatrix(pred_rf,testing$classe) 
+```
+
+The next function was the random forest function. It was relatively time consuming to run but showed a very good performance of 98.14% with the confusionMatrix. Hence, it will be one of the final models to be used. 
+
+```{r}
+library(gbm)
+set.seed(62433)
+modFit_gbm <- train(training$classe~.,data=training,method="gbm",verbose=FALSE)
+pred_gbm <- predict(modFit_gbm,testing)
+confusionMatrix(pred_gbm,testing$classe) 
+```
+
+The final training model to be considered is the gbm method. Although being relatively quick to run, the gbm method managed to provide a 95.31% accuracy when tested. The last two training methods yielded very good results but in order to get a yet more accurate answer, I will combine the random forest and gbm methods. 
+
+```{r}
+prediction_DF <- data.frame(pred_rf,pred_gbm,classe=testing$classe)
+set.seed(62433)
+CombFit_gbm <- train(prediction_DF$classe~.,data=prediction_DF,method="gbm",verbose=FALSE)
+final_prediction <- predict(CombFit_gbm,prediction_DF)
+confusionMatrix(final_prediction,testing$classe) 
+```
+
+After combination, the prediction accuracy still remains 98.14% which is identical to the random forest case. This tends to suggest that the prediction method in this case is just taking the random forest vector. Therefore, to save time, the random forest results can be used directly. In the future, more methods can be added to this combination technique to get better results. Also, with more RAM, the training set can be set to higher values like 70% as in the course notes. 
+
+```{r}
+Assignment_results <- predict(modFit_rf,final_testset) 
+```
+
+The test set provided by the assignment is run and the results are saved in the "Assignment_results" variable. 
+
+```{r}
+pml_write_files = function(x){
+   n = length(x)
+   for(i in 1:n){
+      filename = paste0("problem_id_",i,".txt")
+      write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+   }
+} 
+```
+
+This function is used to generate 20 text files in which the results of the 20 test cases can be stored. This function has already been given in the submission section of the assignment. 
+
+```{r}
+pml_write_files(Assignment_results) 
+```
+
+This line calls the above function and writes the 20 obtained results into corresponding files which will later be submitted. These results were successful in all of the cases, which tends to suggest in this particular situation, 30% of the "workingdata" was sufficient for the training and together with the confusionMatrix() results, tend to suggest that a sufficient level of accuracy was obtained.
+
+
+
+CROSS VALIDATION AND OUT OF SAMPLE ERROR ESTIMATION
+
+There were a total of four methods investigated for the training of the data set. The training set, for reasons explained above was restricted to 30% of the available data and the testing set was set to 70%. Initially, considering how elaborate the different training methods were, it is expected for the random forest algorithm to perform better. However, the gbm algorithm also performed relatively well considering the out of sample error of under 5% obtained during the cross validation process. The accuracy and out of sample errors are listed below for the above parameters:
+
+
+Method: rpart
+Accuracy: 49.27%
+Out of sample Error: 50.73%
+
+
+Method: lda
+Accuracy: 69.39%
+Out of sample Error: 30.61%
+
+
+Method: random forest
+Accuracy: 98.14%
+Out of sample Error: 1.86%
+
+
+Method: gbm
+Accuracy: 95.31%
+Out of sample Error: 4.69%
+
+
+The combined method that was tried, had identical results to the random forest function. Hence, the random forest function was chosen in terms of lowest out-of-sample error through cross-validation.
+
+
+ACKNOWLEDGEMENTS
+
+I would like to thank the people who provided the data for this project and the provided link <http://groupware.les.inf.puc-rio.br/har> contained very useful information to getting to know what the data actually meant.
